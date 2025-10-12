@@ -1,7 +1,7 @@
 import axios from "axios";
 
 // const BASE_URL = "http://localhost:5000/api";
-const BASE_URL='https://pos-backend-tosh.vercel.app;'
+const BASE_URL='https://pos-backend-tosh.vercel.app/api';
 // Create axios instance with credentials
 const api = axios.create({
   baseURL: BASE_URL,
