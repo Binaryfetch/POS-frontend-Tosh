@@ -6,7 +6,7 @@
   "rewrites": [
     {
       "source": "/api/:match*",
-      "destination": "https://pos-backend-tosh.vercel.app/:match*"
+      "destination": "https://pos-backend-tosh.vercel.app/api/:match*"
     },
     {
       "source": "/(.*)",
