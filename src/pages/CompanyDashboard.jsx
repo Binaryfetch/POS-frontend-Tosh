@@ -360,7 +360,7 @@ export default function CompanyDashboard() {
                 ))}
               </div>
             </div>
-          )}
+          
 
           {activeTab === 'dealers' && (
             <div>
