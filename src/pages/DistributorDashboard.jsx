@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { getDealers, createDealer, getWalletBalance, getWalletTransactions, getUserInvoices } from "../api/api";
+import { getDealers, createDealer, getWalletBalance, getWalletTransactions, getUserInvoices, distributorDeductDealer } from "../api/api";
 import ProductsView from "../components/ProductsView";
 import InvoiceManagement from "../components/InvoiceManagement";
 import ContentView from "../components/ContentView";
@@ -12,6 +12,9 @@ export default function DistributorDashboard() {
   const [walletBalance, setWalletBalance] = useState(0);
   const [transactions, setTransactions] = useState([]);
   const [invoices, setInvoices] = useState([]);
+	const [showDeductModal, setShowDeductModal] = useState(false);
+	const [deductForm, setDeductForm] = useState({ dealerId: '', points: '', note: '' });
+	const [deductSubmitting, setDeductSubmitting] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -33,6 +36,32 @@ export default function DistributorDashboard() {
       console.error("Error loading data:", error);
     }
   };
+
+	const openDeductModal = (dealer) => {
+		setDeductForm({ dealerId: dealer._id, points: '', note: '' });
+		setShowDeductModal(true);
+	};
+
+	const handleDeductSubmit = async (e) => {
+		e.preventDefault();
+		if (!deductForm.dealerId || !deductForm.points || Number(deductForm.points) <= 0) {
+			alert('Please enter a positive points value.');
+			return;
+		}
+		setDeductSubmitting(true);
+		try {
+			await distributorDeductDealer(deductForm.dealerId, Number(deductForm.points), deductForm.note);
+			setShowDeductModal(false);
+			setDeductForm({ dealerId: '', points: '', note: '' });
+			await loadData();
+			alert('Points deducted successfully');
+		} catch (err) {
+			const msg = err?.response?.data?.msg || 'Failed to deduct points';
+			alert(msg);
+		} finally {
+			setDeductSubmitting(false);
+		}
+	};
 
   const handleCreateDealer = async (dealerData) => {
     setLoading(true);
@@ -223,7 +252,7 @@ export default function DistributorDashboard() {
                 />
               )}
 
-              {dealers.length === 0 ? (
+				{dealers.length === 0 ? (
                 <div className="text-center py-12">
                   <div className="text-gray-400 text-6xl mb-4">👥</div>
                   <h3 className="text-lg font-medium text-gray-900 mb-2">No dealers yet</h3>
@@ -236,7 +265,7 @@ export default function DistributorDashboard() {
                     Add Your First Dealer
                   </button>
                 </div>
-              ) : (
+				) : (
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                   {dealers.map(dealer => (
                     <div key={dealer._id} className="bg-gray-50 rounded-lg p-4 border border-gray-200 hover:shadow-md transition-shadow">
@@ -258,13 +287,21 @@ export default function DistributorDashboard() {
                           </div>
                         </div>
                       </div>
-                      <div className="mt-3 flex items-center justify-between">
+								<div className="mt-3 flex items-center justify-between">
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                           Dealer
                         </span>
-                        <span className="text-xs text-gray-500">
-                          {new Date(dealer.createdAt).toLocaleDateString()}
-                        </span>
+									<div className="flex items-center space-x-2">
+										<button
+											onClick={() => openDeductModal(dealer)}
+											className="px-3 py-1.5 rounded-lg text-xs font-medium border border-red-300 text-red-600 hover:bg-red-50"
+										>
+											Deduct Points
+										</button>
+										<span className="text-xs text-gray-500">
+											{new Date(dealer.createdAt).toLocaleDateString()}
+										</span>
+									</div>
                       </div>
                     </div>
                   ))}
@@ -320,6 +357,71 @@ export default function DistributorDashboard() {
           {activeTab === 'content' && <ContentView />}
         </div>
       </div>
+
+		{showDeductModal && (
+			<div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+				<div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+					<div className="mt-3">
+						<h3 className="text-lg font-medium text-gray-900 mb-4">Deduct Points from Dealer</h3>
+						<form onSubmit={handleDeductSubmit} className="space-y-4">
+							<div>
+								<label className="block text-sm font-medium text-gray-700">Dealer</label>
+								<select
+									className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+									value={deductForm.dealerId}
+									onChange={(e) => setDeductForm({ ...deductForm, dealerId: e.target.value })}
+									required
+								>
+									<option value="">Select dealer</option>
+									{dealers.map(d => (
+										<option key={d._id} value={d._id}>{d.name}</option>
+									))}
+								</select>
+							</div>
+
+							<div>
+								<label className="block text-sm font-medium text-gray-700">Points *</label>
+								<input
+									type="number"
+									min="1"
+									value={deductForm.points}
+									onChange={(e) => setDeductForm({ ...deductForm, points: e.target.value })}
+									required
+									className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+								/>
+							</div>
+
+							<div>
+								<label className="block text-sm font-medium text-gray-700">Note (optional)</label>
+								<input
+									type="text"
+									value={deductForm.note}
+									onChange={(e) => setDeductForm({ ...deductForm, note: e.target.value })}
+									className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+								/>
+							</div>
+
+							<div className="flex justify-end space-x-3 pt-2">
+								<button
+									type="button"
+									onClick={() => setShowDeductModal(false)}
+									className="px-4 py-2 rounded-md border border-gray-300 text-gray-700"
+								>
+									Cancel
+								</button>
+								<button
+									type="submit"
+									disabled={deductSubmitting}
+									className="px-4 py-2 rounded-md text-white bg-red-600 hover:bg-red-700 disabled:opacity-70"
+								>
+									{deductSubmitting ? 'Processing...' : 'Deduct Points'}
+								</button>
+							</div>
+						</form>
+					</div>
+				</div>
+			</div>
+		)}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { getWalletBalance, getWalletTransactions, getAllWallets, getWalletSummary, companyDeductDistributor, distributorDeductDealer } from "../api/api";
+import { getWalletBalance, getWalletTransactions, getAllWallets, getWalletSummary, companyDeductDistributor } from "../api/api";
 
 export default function WalletManagement() {
   const [balance, setBalance] = useState(0);
@@ -39,14 +39,14 @@ export default function WalletManagement() {
     try {
       const points = parseInt(deductForm.points);
       if (!deductForm.targetId || !points || points <= 0) return;
-      // Heuristic: if selected target is a distributor from allWallets list use company endpoint, else try dealer via distributor endpoint
+      // Only allow deduction for distributors from Company panel
       const targetWallet = allWallets.find(w => w.userID._id === deductForm.targetId);
       const role = targetWallet?.userID?.role;
-      if (role === 'Distributor') {
-        await companyDeductDistributor(deductForm.targetId, points, deductForm.note);
-      } else {
-        await distributorDeductDealer(deductForm.targetId, points, deductForm.note);
+      if (role !== 'Distributor') {
+        alert('Please select a Distributor to deduct points.');
+        return;
       }
+      await companyDeductDistributor(deductForm.targetId, points, deductForm.note);
       setDeductForm({ targetId: '', points: '', note: '' });
       await loadWalletData();
     } catch (e) {
@@ -229,9 +229,9 @@ export default function WalletManagement() {
                   <div>
                     <label className="text-xs text-gray-600">Target User</label>
                     <select className="mt-1 w-full border-gray-300 rounded-lg" value={deductForm.targetId} onChange={e => setDeductForm({ ...deductForm, targetId: e.target.value })}>
-                      <option value="">Select wallet user</option>
-                      {allWallets.map(w => (
-                        <option key={w.userID._id} value={w.userID._id}>{w.userID.name} ({w.userID.role})</option>
+                      <option value="">Select distributor</option>
+                      {allWallets.filter(w => w.userID.role === 'Distributor').map(w => (
+                        <option key={w.userID._id} value={w.userID._id}>{w.userID.name}</option>
                       ))}
                     </select>
                   </div>
@@ -247,7 +247,7 @@ export default function WalletManagement() {
                     <button onClick={handleDeduct} className="w-full inline-flex items-center justify-center px-4 py-2 rounded-lg text-white bg-red-600 hover:bg-red-700">Deduct</button>
                   </div>
                 </div>
-                <p className="text-xs text-yellow-700 mt-2">Company can deduct from Distributors; Distributors can deduct from their Dealers.</p>
+                <p className="text-xs text-yellow-700 mt-2">Company can deduct from Distributors;</p>
               </div>
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {allWallets.map(wallet => (
