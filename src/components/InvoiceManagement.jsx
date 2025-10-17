@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { createInvoice, getUserInvoices, getInvoiceSummary, getAllProducts, getDistributors, getDealers } from "../api/api";
+import { createInvoice, getUserInvoices, getInvoiceSummary, getInvoiceFormData, getProfile } from "../api/api";
 
 export default function InvoiceManagement() {
   const [invoices, setInvoices] = useState([]);
@@ -9,36 +9,51 @@ export default function InvoiceManagement() {
   const [activeTab, setActiveTab] = useState('my-invoices');
   const [products, setProducts] = useState([]);
   const [users, setUsers] = useState([]);
+  const [role, setRole] = useState(null);
 
   useEffect(() => {
-    loadInvoiceData();
-    loadFormData();
+    const init = async () => {
+      try {
+        const profile = await getProfile();
+        setRole(profile.data.user.role);
+      } catch (e) {
+        // ignore; role remains null
+      }
+      await loadInvoiceData();
+      await loadFormData();
+    };
+    init();
   }, []);
 
   const loadInvoiceData = async () => {
     try {
-      const [invoicesRes, summaryRes] = await Promise.all([
-        getUserInvoices(),
-        getInvoiceSummary()
-      ]);
-      
+      // Get current profile first
+      const profileRes = await getProfile();
+      const userRole = profileRes.data.user.role;
+  
+      // Distributor → only sent invoices; others → all
+      const invoiceType = userRole === 'Distributor' ? 'sent' : 'all';
+      const invoicesRes = await getUserInvoices(invoiceType);
+  
+      // Get summary based on role
+      const summaryRes = await getInvoiceSummary(userRole);
+  
+      // Update states
       setInvoices(invoicesRes.data.invoices);
+      console.log("Loaded invoices:", invoicesRes.data.invoices);
       setSummary(summaryRes.data);
+  
     } catch (error) {
       console.error("Error loading invoice data:", error);
     }
   };
+  
 
   const loadFormData = async () => {
     try {
-      const [productsRes, distributorsRes, dealersRes] = await Promise.all([
-        getAllProducts(),
-        getDistributors(),
-        getDealers()
-      ]);
-      
-      setProducts(productsRes.data.products);
-      setUsers([...distributorsRes.data.distributors, ...dealersRes.data.dealers]);
+      const res = await getInvoiceFormData();
+      setProducts(res.data.products || []);
+      setUsers(res.data.counterparties || []);
     } catch (error) {
       console.error("Error loading form data:", error);
     }
@@ -50,6 +65,8 @@ export default function InvoiceManagement() {
       await createInvoice(invoiceData);
       setShowForm(false);
       loadInvoiceData();
+       // Refresh form data so available stock/allocations update immediately
+       loadFormData();
     } catch (error) {
       console.error("Error creating invoice:", error);
     } finally {
@@ -191,10 +208,12 @@ export default function InvoiceManagement() {
                           </div>
                         </div>
                         <div className="text-right">
+                  <div className="text-right">
                           <div className="text-lg font-bold text-primary-600">
                             {invoice.points.toLocaleString()}
                           </div>
-                          <div className="text-sm text-gray-500">points</div>
+                          <div className="text-xs text-gray-500">transferred</div>
+                        </div>
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-4 text-sm">
@@ -204,7 +223,7 @@ export default function InvoiceManagement() {
                         </div>
                         <div>
                           <span className="text-gray-500">Quantity:</span>
-                          <span className="ml-2 font-medium">{invoice.qty} {invoice.productID.uom}</span>
+                          <span className="ml-2 font-medium">{invoice.qty}</span>
                         </div>
                         <div>
                           <span className="text-gray-500">Date:</span>
@@ -213,8 +232,6 @@ export default function InvoiceManagement() {
                           </span>
                         </div>
                         <div>
-                          <span className="text-gray-500">Points per Unit:</span>
-                          <span className="ml-2 font-medium">{invoice.productID.pointsPerUnit}</span>
                         </div>
                       </div>
                     </div>
@@ -244,12 +261,12 @@ export default function InvoiceManagement() {
                           </p>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <div className="text-sm font-semibold text-primary-600">
-                          {invoice.points.toLocaleString()}
+                        <div className="text-right">
+                          <div className="text-sm font-semibold text-primary-600">
+                            {invoice.points?.toLocaleString?.() || 0}
+                          </div>
+                          <div className="text-xs text-gray-500">transferred</div>
                         </div>
-                        <div className="text-xs text-gray-500">points</div>
-                      </div>
                     </div>
                   </div>
                 ))}
@@ -273,11 +290,12 @@ export default function InvoiceManagement() {
   );
 }
 
-function InvoiceForm({ products, users, onSubmit, onCancel, loading }) {
+ function InvoiceForm({ products, users, onSubmit, onCancel, loading }) {
   const [formData, setFormData] = useState({
     toUser: "",
     productID: "",
-    qty: ""
+    qty: "",
+    transferPoints: ""
   });
 
   const handleChange = (e) => {
@@ -287,15 +305,27 @@ function InvoiceForm({ products, users, onSubmit, onCancel, loading }) {
     });
   };
 
-  const handleSubmit = (e) => {
+   const handleSubmit = (e) => {
     e.preventDefault();
-    onSubmit({
-      ...formData,
-      qty: parseInt(formData.qty)
-    });
+     const qtyNum = parseInt(formData.qty);
+     if (selectedProduct && typeof selectedProduct.uom === 'number' && qtyNum > selectedProduct.uom) {
+       alert(`Quantity exceeds available. Available: ${selectedProduct.uom}`);
+       return;
+     }
+     const payload = {
+      toUser: formData.toUser,
+      productID: formData.productID,
+       qty: qtyNum
+    };
+    if (formData.transferPoints !== "") {
+      payload.transferPoints = parseInt(formData.transferPoints);
+    }
+    onSubmit(payload);
   };
 
-  const selectedProduct = products.find(p => p._id === formData.productID);
+   const selectedProduct = products.find(p => p._id === formData.productID);
+   const selectedUser = users.find(u => u._id === formData.toUser);
+   const isDealerTarget = selectedUser?.role === 'Dealer';
 
   return (
     <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
@@ -315,7 +345,7 @@ function InvoiceForm({ products, users, onSubmit, onCancel, loading }) {
                 <option value="">Select user</option>
                 {users.map(user => (
                   <option key={user._id} value={user._id}>
-                    {user.name} ({user.role})
+                    {user.name} ({user.role}){user.role === 'Dealer' && user.dealerRewardLimit ? ` • Limit: ${user.dealerRewardLimit}` : ''}
                   </option>
                 ))}
               </select>
@@ -331,38 +361,59 @@ function InvoiceForm({ products, users, onSubmit, onCancel, loading }) {
                 className="mt-1 block w-full border-gray-300 rounded-lg shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
               >
                 <option value="">Select product</option>
-                {products.map(product => (
-                  <option key={product._id} value={product._id}>
-                    {product.name} ({product.pointsPerUnit} pts/{product.uom})
-                  </option>
-                ))}
+                 {products.map(product => (
+                   <option key={product._id} value={product._id}>
+                     {product.name} ({product.pointsPerUnit} pts){typeof product.uom === 'number' ? ` • Avl: ${product.uom}` : ''}
+                   </option>
+                 ))}
               </select>
             </div>
             
             <div>
               <label className="block text-sm font-medium text-gray-700">Quantity *</label>
-              <input
+               <input
                 type="number"
                 name="qty"
                 value={formData.qty}
                 onChange={handleChange}
                 required
                 min="1"
-                className="mt-1 block w-full border-gray-300 rounded-lg shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                 max={selectedProduct && typeof selectedProduct.uom === 'number' ? selectedProduct.uom : undefined}
+                 className="mt-1 block w-full border-gray-300 rounded-lg shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
               />
             </div>
 
             {selectedProduct && formData.qty && (
               <div className="bg-primary-50 border border-primary-200 rounded-lg p-4">
                 <h4 className="text-sm font-medium text-primary-800 mb-2">Invoice Summary</h4>
-                <div className="text-sm text-primary-700">
+                 <div className="text-sm text-primary-700">
                   <div>Product: {selectedProduct.name}</div>
-                  <div>Quantity: {formData.qty} {selectedProduct.uom}</div>
+                  <div>Quantity: {formData.qty}</div>
                   <div>Points per Unit: {selectedProduct.pointsPerUnit}</div>
                   <div className="font-semibold mt-2">
-                    Total Points: {(formData.qty * selectedProduct.pointsPerUnit).toLocaleString()}
+                    Earned Points: {(formData.qty * selectedProduct.pointsPerUnit).toLocaleString()}
                   </div>
+                   {typeof selectedProduct.uom === 'number' && (
+                     <div className="mt-1 text-xs">Available Qty: {selectedProduct.uom}</div>
+                   )}
                 </div>
+              </div>
+            )}
+
+            {/* Optional transfer points for Distributor -> Dealer: show only if target is a Dealer */}
+            {isDealerTarget && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Transfer Points (optional for Distributor → Dealer)</label>
+                <input
+                  type="number"
+                  name="transferPoints"
+                  value={formData.transferPoints}
+                  onChange={handleChange}
+                  min="0"
+                  className="mt-1 block w-full border-gray-300 rounded-lg shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                  placeholder="Leave blank to transfer all earned"
+                />
+                <p className="text-xs text-gray-500 mt-1">Distributor can choose how many points to transfer (capped by dealer limit).</p>
               </div>
             )}
 

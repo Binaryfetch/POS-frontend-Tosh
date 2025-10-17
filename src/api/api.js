@@ -90,6 +90,13 @@ export const getAllWallets = () =>
 export const getWalletSummary = () => 
   api.get("/wallets/admin/summary");
 
+// Manual deduction APIs
+export const companyDeductDistributor = (distributorId, points, note) =>
+  api.post("/wallets/admin/deduct-distributor", { distributorId, points, note });
+
+export const distributorDeductDealer = (dealerId, points, note) =>
+  api.post("/wallets/deduct-dealer", { dealerId, points, note });
+
 // Invoice APIs
 export const createInvoice = (invoiceData) => 
   api.post("/invoices", invoiceData);
@@ -100,8 +107,16 @@ export const getUserInvoices = (type = 'all') =>
 export const getAllInvoices = () => 
   api.get("/invoices/admin/all");
 
-export const getInvoiceSummary = () => 
-  api.get("/invoices/admin/summary");
+export const getInvoiceSummary = (role = 'admin') => {
+  const url =
+    role === 'Distributor'
+      ? "/invoices/distributor/summary"
+      : "/invoices/admin/summary";
+  return api.get(url);
+};
+
+export const getInvoiceFormData = () =>
+  api.get("/invoices/form-data");
 
 // Content APIs
 export const getAllContent = (params = '') => 

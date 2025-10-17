@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { getWalletBalance, getWalletTransactions, getAllWallets, getWalletSummary } from "../api/api";
+import { getWalletBalance, getWalletTransactions, getAllWallets, getWalletSummary, companyDeductDistributor, distributorDeductDealer } from "../api/api";
 
 export default function WalletManagement() {
   const [balance, setBalance] = useState(0);
@@ -8,6 +8,7 @@ export default function WalletManagement() {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('balance');
+  const [deductForm, setDeductForm] = useState({ targetId: '', points: '', note: '' });
 
   useEffect(() => {
     loadWalletData();
@@ -31,6 +32,25 @@ export default function WalletManagement() {
       console.error("Error loading wallet data:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeduct = async () => {
+    try {
+      const points = parseInt(deductForm.points);
+      if (!deductForm.targetId || !points || points <= 0) return;
+      // Heuristic: if selected target is a distributor from allWallets list use company endpoint, else try dealer via distributor endpoint
+      const targetWallet = allWallets.find(w => w.userID._id === deductForm.targetId);
+      const role = targetWallet?.userID?.role;
+      if (role === 'Distributor') {
+        await companyDeductDistributor(deductForm.targetId, points, deductForm.note);
+      } else {
+        await distributorDeductDealer(deductForm.targetId, points, deductForm.note);
+      }
+      setDeductForm({ targetId: '', points: '', note: '' });
+      await loadWalletData();
+    } catch (e) {
+      console.error('Deduct failed', e);
     }
   };
 
@@ -181,7 +201,7 @@ export default function WalletManagement() {
                               {transaction.type} Transaction
                             </h3>
                             <p className="text-xs text-gray-500">
-                              {new Date(transaction.date).toLocaleDateString()}
+                              {new Date(transaction.date).toLocaleDateString()} {transaction.note ? '• ' + transaction.note : ''}
                             </p>
                           </div>
                         </div>
@@ -204,6 +224,31 @@ export default function WalletManagement() {
           {activeTab === 'all' && (
             <div>
               <h2 className="text-lg font-medium text-gray-900 mb-6">All Wallets</h2>
+              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-6">
+                <div className="grid md:grid-cols-4 gap-3 items-end">
+                  <div>
+                    <label className="text-xs text-gray-600">Target User</label>
+                    <select className="mt-1 w-full border-gray-300 rounded-lg" value={deductForm.targetId} onChange={e => setDeductForm({ ...deductForm, targetId: e.target.value })}>
+                      <option value="">Select wallet user</option>
+                      {allWallets.map(w => (
+                        <option key={w.userID._id} value={w.userID._id}>{w.userID.name} ({w.userID.role})</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-600">Points</label>
+                    <input type="number" className="mt-1 w-full border-gray-300 rounded-lg" value={deductForm.points} onChange={e => setDeductForm({ ...deductForm, points: e.target.value })} min="1" />
+                  </div>
+                  <div className="md:col-span-1">
+                    <label className="text-xs text-gray-600">Note</label>
+                    <input type="text" className="mt-1 w-full border-gray-300 rounded-lg" value={deductForm.note} onChange={e => setDeductForm({ ...deductForm, note: e.target.value })} placeholder="Reason (optional)" />
+                  </div>
+                  <div>
+                    <button onClick={handleDeduct} className="w-full inline-flex items-center justify-center px-4 py-2 rounded-lg text-white bg-red-600 hover:bg-red-700">Deduct</button>
+                  </div>
+                </div>
+                <p className="text-xs text-yellow-700 mt-2">Company can deduct from Distributors; Distributors can deduct from their Dealers.</p>
+              </div>
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {allWallets.map(wallet => (
                   <div key={wallet._id} className="bg-gray-50 rounded-xl p-4 border border-gray-200">

@@ -88,19 +88,6 @@ export default function DealerDashboard() {
               </div>
             </button>
             <button
-              onClick={() => setActiveTab('invoices')}
-              className={`py-6 px-1 border-b-2 font-semibold text-sm transition-all duration-200 whitespace-nowrap ${
-                activeTab === 'invoices'
-                  ? 'border-primary-500 text-primary-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <div className="flex items-center space-x-2">
-                <span className="text-lg">📄</span>
-                <span>Invoices</span>
-              </div>
-            </button>
-            <button
               onClick={() => setActiveTab('content')}
               className={`py-6 px-1 border-b-2 font-semibold text-sm transition-all duration-200 whitespace-nowrap ${
                 activeTab === 'content'
@@ -218,66 +205,7 @@ export default function DealerDashboard() {
               )}
             </div>
           )}
-          {activeTab === 'invoices' && (
-            <div>
-              <h2 className="text-lg font-medium text-gray-900 mb-6">My Invoices</h2>
-              {invoices.length === 0 ? (
-                <div className="text-center py-12">
-                  <div className="text-gray-400 text-6xl mb-4">📄</div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">No invoices yet</h3>
-                  <p className="text-gray-500">Invoices from your distributor will appear here</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {invoices.map(invoice => (
-                    <div key={invoice._id} className="bg-gray-50 rounded-xl p-6 border border-gray-200">
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center space-x-3">
-                          <div className="h-12 w-12 bg-gradient-to-r from-primary-500 to-primary-600 rounded-xl flex items-center justify-center">
-                            <span className="text-white font-bold text-lg">📄</span>
-                          </div>
-                          <div>
-                            <h3 className="text-lg font-medium text-gray-900">
-                              Invoice #{invoice._id.slice(-6)}
-                            </h3>
-                            <p className="text-sm text-gray-600">
-                              From: {invoice.fromUser.name}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-lg font-bold text-primary-600">
-                            +{invoice.points.toLocaleString()}
-                          </div>
-                          <div className="text-sm text-gray-500">points earned</div>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-4 text-sm">
-                        <div>
-                          <span className="text-gray-500">Product:</span>
-                          <span className="ml-2 font-medium">{invoice.productID.name}</span>
-                        </div>
-                        <div>
-                          <span className="text-gray-500">Quantity:</span>
-                          <span className="ml-2 font-medium">{invoice.qty} {invoice.productID.uom}</span>
-                        </div>
-                        <div>
-                          <span className="text-gray-500">Date:</span>
-                          <span className="ml-2 font-medium">
-                            {new Date(invoice.date).toLocaleDateString()}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-gray-500">Points per Unit:</span>
-                          <span className="ml-2 font-medium">{invoice.productID.pointsPerUnit}</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+        
           {activeTab === 'content' && <ContentView />}
         </div>
       </div>
