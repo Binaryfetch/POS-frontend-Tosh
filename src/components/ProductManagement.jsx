@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from "react";
-import { getAllProductsAdmin, createProduct, updateProduct, deleteProduct } from "../api/api";
+import { getAllProductsAdmin, createProduct, updateProduct, deleteProduct, bulkCreateProducts, parseExcelFile } from "../api/api";
 
 export default function ProductManagement() {
   const [products, setProducts] = useState([]);
   const [showForm, setShowForm] = useState(false);
+  const [showBulkForm, setShowBulkForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('active');
@@ -71,13 +72,22 @@ export default function ProductManagement() {
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Product Management</h1>
             <p className="text-gray-600 text-lg">Manage your product catalog</p>
           </div>
-          <button
-            onClick={() => setShowForm(true)}
-            className="inline-flex items-center px-6 py-3 border border-transparent text-sm font-medium rounded-xl shadow-sm text-white bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-all duration-200 transform hover:scale-105"
-          >
-            <span className="mr-2">+</span>
-            Add Product
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={() => setShowBulkForm(true)}
+              className="inline-flex items-center px-6 py-3 border border-gray-300 text-sm font-medium rounded-xl shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-all duration-200"
+            >
+              <span className="mr-2">📊</span>
+              Add Bulk Product
+            </button>
+            <button
+              onClick={() => setShowForm(true)}
+              className="inline-flex items-center px-6 py-3 border border-transparent text-sm font-medium rounded-xl shadow-sm text-white bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-all duration-200 transform hover:scale-105"
+            >
+              <span className="mr-2">+</span>
+              Add Product
+            </button>
+          </div>
         </div>
       </div>
 
@@ -209,6 +219,20 @@ export default function ProductManagement() {
             setEditingProduct(null);
           }}
           loading={loading}
+        />
+      )}
+
+      {/* Bulk Product Upload Modal */}
+      {showBulkForm && (
+        <BulkProductUpload
+          onSubmit={handleCreateProduct}
+          onCancel={() => {
+            setShowBulkForm(false);
+          }}
+          onSuccess={() => {
+            setShowBulkForm(false);
+            loadProducts();
+          }}
         />
       )}
     </div>
@@ -390,6 +414,278 @@ function ProductForm({ product, onSubmit, onCancel, loading }) {
               </button>
             </div>
           </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BulkProductUpload({ onCancel, onSuccess }) {
+  const [file, setFile] = useState(null);
+  const [previewData, setPreviewData] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [step, setStep] = useState('upload'); // 'upload' or 'preview'
+  const [imageErrors, setImageErrors] = useState(new Set()); // Track image load errors
+
+  const handleFileChange = async (e) => {
+    const selectedFile = e.target.files[0];
+    if (!selectedFile) return;
+
+    // Validate file type
+    const validTypes = [
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel',
+      'text/csv'
+    ];
+    const validExtensions = ['.xlsx', '.xls', '.csv'];
+    const fileExtension = selectedFile.name.substring(selectedFile.name.lastIndexOf('.')).toLowerCase();
+
+    if (!validTypes.includes(selectedFile.type) && !validExtensions.includes(fileExtension)) {
+      setError('Please upload a valid Excel file (.xlsx, .xls, or .csv)');
+      return;
+    }
+
+    setFile(selectedFile);
+    setError(null);
+    setLoading(true);
+
+    try {
+      // Send file to backend for parsing (this will extract embedded images)
+      const response = await parseExcelFile(selectedFile);
+      const { products } = response.data;
+
+      if (!products || products.length === 0) {
+        setError('No valid products found in the file');
+        setLoading(false);
+        return;
+      }
+
+      // Validate products
+      const validatedData = [];
+      for (let i = 0; i < products.length; i++) {
+        const product = products[i];
+
+        // Validate required fields
+        if (!product.name || !product.uom || product.pointsPerUnit === undefined || product.pointsPerUnit === null) {
+          setError(`Row ${i + 2}: Missing required fields (name, uom, pointsPerUnit)`);
+          setLoading(false);
+          return;
+        }
+
+        if (product.status !== 'Active' && product.status !== 'Inactive') {
+          product.status = 'Active';
+        }
+
+        validatedData.push(product);
+      }
+
+      setPreviewData(validatedData);
+      setImageErrors(new Set()); // Reset image errors for new preview
+      setStep('preview');
+    } catch (err) {
+      console.error('Error parsing file:', err);
+      setError(err.response?.data?.msg || 'Error parsing Excel file. Please ensure the file format is correct.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmit = async () => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      await bulkCreateProducts(previewData);
+      alert(`Successfully added ${previewData.length} product(s)!`);
+      onSuccess();
+    } catch (err) {
+      console.error('Bulk upload error:', err);
+      setError(err.response?.data?.msg || 'Error uploading products. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReset = () => {
+    setFile(null);
+    setPreviewData([]);
+    setError(null);
+    setStep('upload');
+    setImageErrors(new Set());
+  };
+
+  return (
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+      <div className="relative top-20 mx-auto p-5 border w-full max-w-4xl shadow-lg rounded-2xl bg-white">
+        <div className="mt-3">
+          <h3 className="text-lg font-medium text-gray-900 mb-4">
+            Bulk Product Upload
+          </h3>
+
+          {step === 'upload' && (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Upload Excel File
+                </label>
+                <input
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  onChange={handleFileChange}
+                  disabled={loading}
+                  className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100 disabled:opacity-50"
+                />
+                {loading && (
+                  <div className="mt-2 text-sm text-primary-600">Parsing Excel file and extracting images...</div>
+                )}
+                <p className="text-xs text-gray-500 mt-2">
+                  Please ensure your Excel file has the following columns:
+                  <br />
+                  <strong>name</strong> (or Name, Product Name), <strong>uom</strong> (or UOM, Unit of Measure), 
+                  <strong>pointsPerUnit</strong> (or Points Per Unit, Points), <strong>status</strong> (optional, Active/Inactive)
+                  <br />
+                  <strong>Images:</strong> You can embed images directly in Excel cells, or include image URLs/base64 in an "image" column.
+                  Embedded images will be automatically extracted and matched to rows.
+                </p>
+              </div>
+
+              {error && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-sm text-red-600">{error}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {step === 'preview' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-gray-600">
+                  Preview: {previewData.length} product(s) ready to upload
+                </p>
+                <button
+                  onClick={handleReset}
+                  className="text-sm text-primary-600 hover:text-primary-800"
+                >
+                  Upload Different File
+                </button>
+              </div>
+
+              <div className="max-h-96 overflow-y-auto border border-gray-200 rounded-lg">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50 sticky top-0">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Image
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Name
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        UOM
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Points/Unit
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Status
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {previewData.map((product, index) => {
+                      // Get image source - could be base64 data URI, Cloudinary URL, or imageURL
+                      const imageSrc = (product.imageURL && product.imageURL.trim() !== '') 
+                        ? product.imageURL.trim() 
+                        : (product.image && product.image.trim() !== '') 
+                          ? product.image.trim() 
+                          : null;
+                      
+                      const hasImageError = imageErrors.has(index);
+                      
+                      return (
+                        <tr key={index} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            {imageSrc && !hasImageError ? (
+                              <img
+                                src={imageSrc}
+                                alt={product.name}
+                                className="h-12 w-12 object-cover rounded-lg border border-gray-200"
+                                onError={() => {
+                                  setImageErrors(prev => new Set(prev).add(index));
+                                }}
+                              />
+                            ) : (
+                              <div className="h-12 w-12 bg-gray-100 rounded-lg flex items-center justify-center">
+                                <span className="text-xs text-gray-400">
+                                  {imageSrc && hasImageError ? 'Invalid' : 'No image'}
+                                </span>
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                            {product.name}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
+                            {product.uom}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
+                            {product.pointsPerUnit}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm">
+                            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                              product.status === 'Active' 
+                                ? 'bg-green-100 text-green-800' 
+                                : 'bg-red-100 text-red-800'
+                            }`}>
+                              {product.status}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {error && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-sm text-red-600">{error}</p>
+                </div>
+              )}
+
+              <div className="flex justify-end space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={onCancel}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={loading}
+                  className="px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50"
+                >
+                  {loading ? "Uploading..." : `Confirm & Upload ${previewData.length} Product(s)`}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {step === 'upload' && (
+            <div className="flex justify-end space-x-3 pt-4">
+              <button
+                type="button"
+                onClick={onCancel}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

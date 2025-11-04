@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const BASE_URL='/api';
+const BASE_URL='http://localhost:5000/api';
 // Create axios instance with credentials
 const api = axios.create({
   baseURL: BASE_URL,
@@ -65,6 +65,17 @@ export const createProduct = (productData) =>
   api.post("/products", productData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   });
+
+export const bulkCreateProducts = (productsData) => 
+  api.post("/products/bulk", { products: productsData });
+
+export const parseExcelFile = (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return api.post("/products/bulk/parse", formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+};
 
 export const updateProduct = (id, productData) => 
   api.put(`/products/${id}`, productData, {
