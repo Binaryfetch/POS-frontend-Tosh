@@ -12,6 +12,7 @@ export default function DistributorDashboard() {
   const [walletBalance, setWalletBalance] = useState(0);
   const [transactions, setTransactions] = useState([]);
   const [invoices, setInvoices] = useState([]);
+  const [boughtProducts, setBoughtProducts] = useState([]);
 	const [showDeductModal, setShowDeductModal] = useState(false);
 	const [deductForm, setDeductForm] = useState({ dealerId: '', points: '', note: '' });
 	const [deductSubmitting, setDeductSubmitting] = useState(false);
@@ -26,12 +27,26 @@ export default function DistributorDashboard() {
         getDealers(),
         getWalletBalance(),
         getWalletTransactions(),
-        getUserInvoices()
+        getUserInvoices('received')
       ]);
       setDealers(dealersRes.data.dealers);
       setWalletBalance(balanceRes.data.balance);
       setTransactions(transactionsRes.data.transactions);
-      setInvoices(invoicesRes.data.invoices);
+      const inv = invoicesRes.data.invoices || [];
+      setInvoices(inv);
+      // Aggregate bought products
+      const map = new Map();
+      inv.forEach(i => {
+        const id = i.productID?._id || i.productID;
+        const name = i.productID?.name || '-';
+        const key = String(id);
+        const entry = map.get(key) || { productId: key, productName: name, totalQty: 0, lastDate: null };
+        entry.totalQty += Number(i.qty || 0);
+        const d = new Date(i.date);
+        if (!entry.lastDate || d > entry.lastDate) entry.lastDate = d;
+        map.set(key, entry);
+      });
+      setBoughtProducts(Array.from(map.values()));
     } catch (error) {
       console.error("Error loading data:", error);
     }
@@ -140,6 +155,19 @@ export default function DistributorDashboard() {
               </div>
             </button>
             <button
+              onClick={() => setActiveTab('bought')}
+              className={`py-6 px-1 border-b-2 font-semibold text-sm transition-all duration-200 whitespace-nowrap ${
+                activeTab === 'bought'
+                  ? 'border-primary-500 text-primary-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <div className="flex items-center space-x-2">
+                <span className="text-lg">🛒</span>
+                <span>Bought Products</span>
+              </div>
+            </button>
+            <button
               onClick={() => setActiveTab('invoices')}
               className={`py-6 px-1 border-b-2 font-semibold text-sm transition-all duration-200 whitespace-nowrap ${
                 activeTab === 'invoices'
@@ -231,6 +259,39 @@ export default function DistributorDashboard() {
           )}
 
           {activeTab === 'products' && <ProductsView />}
+          {activeTab === 'bought' && (
+            <div>
+              <h2 className="text-lg font-medium text-gray-900 mb-6">My Bought Products</h2>
+              {boughtProducts.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="text-gray-400 text-6xl mb-4">🛒</div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No purchases yet</h3>
+                  <p className="text-gray-500">Products you receive via invoices will appear here</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Qty</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Purchase</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {boughtProducts.map(bp => (
+                        <tr key={bp.productId}>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{bp.productName}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{bp.totalQty}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{bp.lastDate ? new Date(bp.lastDate).toLocaleDateString() : '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
           {activeTab === 'dealers' && (
             <div>
               <div className="flex justify-between items-center mb-6">

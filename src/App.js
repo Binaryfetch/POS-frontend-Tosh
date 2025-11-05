@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { getProfile } from "./api/api";
 import Login from "./components/Login";
 import Layout from "./components/Layout";
 import CompanyDashboard from "./pages/CompanyDashboard";
@@ -8,6 +9,28 @@ import DealerDashboard from "./pages/DealerDashboard";
 function App() {
   const [token, setToken] = useState(null);
   const [user, setUser] = useState(null);
+  const [bootstrapping, setBootstrapping] = useState(true);
+
+  useEffect(() => {
+    const init = async () => {
+      try {
+        const res = await getProfile();
+        if (res?.data?.user) {
+          setUser(res.data.user);
+          setToken('logged-in');
+        }
+      } catch (_) {
+        // Not logged in or token invalid; stay at login
+      } finally {
+        setBootstrapping(false);
+      }
+    };
+    init();
+  }, []);
+
+  if (bootstrapping) {
+    return null;
+  }
 
   if (!token || !user) {
     return <Login setUser={setUser} setToken={setToken} />;

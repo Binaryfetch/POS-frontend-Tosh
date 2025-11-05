@@ -8,6 +8,7 @@ export default function DealerDashboard() {
   const [walletBalance, setWalletBalance] = useState(0);
   const [transactions, setTransactions] = useState([]);
   const [invoices, setInvoices] = useState([]);
+  const [boughtProducts, setBoughtProducts] = useState([]);
 
   useEffect(() => {
     loadData();
@@ -18,11 +19,25 @@ export default function DealerDashboard() {
       const [balanceRes, transactionsRes, invoicesRes] = await Promise.all([
         getWalletBalance(),
         getWalletTransactions(),
-        getUserInvoices()
+        getUserInvoices('received')
       ]);
       setWalletBalance(balanceRes.data.balance);
       setTransactions(transactionsRes.data.transactions);
-      setInvoices(invoicesRes.data.invoices);
+      const inv = invoicesRes.data.invoices || [];
+      setInvoices(inv);
+      // Aggregate bought products by productID
+      const map = new Map();
+      inv.forEach(i => {
+        const id = i.productID?._id || i.productID;
+        const name = i.productID?.name || '-';
+        const key = String(id);
+        const entry = map.get(key) || { productId: key, productName: name, totalQty: 0, lastDate: null };
+        entry.totalQty += Number(i.qty || 0);
+        const d = new Date(i.date);
+        if (!entry.lastDate || d > entry.lastDate) entry.lastDate = d;
+        map.set(key, entry);
+      });
+      setBoughtProducts(Array.from(map.values()));
     } catch (error) {
       console.error("Error loading data:", error);
     }
@@ -72,6 +87,32 @@ export default function DealerDashboard() {
               <div className="flex items-center space-x-2">
                 <span className="text-lg">📦</span>
                 <span>Products</span>
+              </div>
+            </button>
+            <button
+              onClick={() => setActiveTab('bought')}
+              className={`py-6 px-1 border-b-2 font-semibold text-sm transition-all duration-200 whitespace-nowrap ${
+                activeTab === 'bought'
+                  ? 'border-primary-500 text-primary-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <div className="flex items-center space-x-2">
+                <span className="text-lg">🛒</span>
+                <span>Bought Products</span>
+              </div>
+            </button>
+            <button
+              onClick={() => setActiveTab('invoices')}
+              className={`py-6 px-1 border-b-2 font-semibold text-sm transition-all duration-200 whitespace-nowrap ${
+                activeTab === 'invoices'
+                  ? 'border-primary-500 text-primary-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <div className="flex items-center space-x-2">
+                <span className="text-lg">📄</span>
+                <span>Invoices</span>
               </div>
             </button>
             <button
@@ -161,6 +202,76 @@ export default function DealerDashboard() {
           )}
 
           {activeTab === 'products' && <ProductsView />}
+          {activeTab === 'bought' && (
+            <div>
+              <h2 className="text-lg font-medium text-gray-900 mb-6">My Bought Products</h2>
+              {boughtProducts.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="text-gray-400 text-6xl mb-4">🛒</div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No purchases yet</h3>
+                  <p className="text-gray-500">Products you receive via invoices will appear here</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Qty</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Purchase</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {boughtProducts.map(bp => (
+                        <tr key={bp.productId}>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{bp.productName}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{bp.totalQty}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{bp.lastDate ? new Date(bp.lastDate).toLocaleDateString() : '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+          {activeTab === 'invoices' && (
+            <div>
+              <h2 className="text-lg font-medium text-gray-900 mb-6">My Invoices</h2>
+              {invoices.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="text-gray-400 text-6xl mb-4">📄</div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No invoices yet</h3>
+                  <p className="text-gray-500">Invoices you receive from your distributor will appear here</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">From</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Qty</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Points</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {invoices.map(inv => (
+                        <tr key={inv._id}>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{new Date(inv.date).toLocaleDateString()}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{inv.fromUser?.name || '-'}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{inv.productID?.name || '-'}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{inv.qty}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{inv.points?.toLocaleString?.() ?? inv.points}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
           {activeTab === 'wallet' && (
             <div>
               <h2 className="text-lg font-medium text-gray-900 mb-6">Wallet History</h2>
